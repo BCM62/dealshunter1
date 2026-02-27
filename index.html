@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DealShunter – Echter Amazon Preisfehler Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #111; --border: #222; --accent: #ff3b30;
+    --green: #00ff88; --yellow: #ffd60a; --blue: #0a84ff;
+    --text: #e0d6c8; --muted: #555;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; min-height: 100vh; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: rgba(10,10,10,0.97); backdrop-filter: blur(10px); z-index: 100; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 0.1em; color: var(--accent); }
+  .logo span { color: var(--text); }
+  .status-bar { display: flex; align-items: center; gap: 12px; font-size: 0.7rem; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  .dot.red { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  .api-setup { background: var(--surface); border: 1px solid var(--yellow); padding: 20px; margin-bottom: 28px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .form-group label.yellow { color: var(--yellow); }
+  input { background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Space Mono', monospace; font-size: 0.85rem; padding: 10px 14px; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: var(--accent); }
+  .btn { background: var(--accent); color: #fff; border: none; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 0.1em; padding: 10px 24px; cursor: pointer; transition: opacity 0.2s; white-space: nowrap; }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.grey { background: var(--border); }
+  .stats-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 32px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); padding: 16px; text-align: center; }
+  .stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; color: var(--accent); line-height: 1; }
+  .stat-label { font-size: 0.6rem; color: var(--muted); margin-top: 4px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .add-form { background: var(--surface); border: 1px solid var(--border); padding: 20px; margin-bottom: 32px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .deals-grid { display: flex; flex-direction: column; gap: 12px; }
+  .deal-card { background: var(--surface); border: 1px solid var(--border); padding: 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; transition: border-color 0.3s; position: relative; overflow: hidden; }
+  .deal-card.error { border-color: var(--accent); }
+  .deal-card.error::before { content: ''; position: absolute; inset: 0; background: rgba(255,59,48,0.04); pointer-events: none; }
+  .deal-card.deal { border-color: var(--green); }
+  .deal-card.deal::before { content: ''; position: absolute; inset: 0; background: rgba(0,255,136,0.03); pointer-events: none; }
+  .deal-card.loading { opacity: 0.6; }
+  .deal-icon { font-size: 2rem; width: 48px; text-align: center; }
+  .deal-name { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
+  .deal-asin { font-size: 0.7rem; color: var(--muted); }
+  .deal-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .deal-tag { font-size: 0.62rem; padding: 2px 8px; background: var(--border); color: var(--muted); letter-spacing: 0.05em; }
+  .deal-tag.live { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
+  .deal-right { text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 160px; }
+  .price-current { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; line-height: 1; transition: color 0.3s; }
+  .badge { font-size: 0.65rem; padding: 3px 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .badge.error { background: var(--accent); color: #fff; }
+  .badge.deal { background: var(--green); color: #000; }
+  .badge.normal { background: var(--border); color: var(--muted); }
+  .badge.loading { background: var(--yellow); color: #000; animation: pulse 1s infinite; }
+  .badge.oos { background: #333; color: #666; }
+  .deal-actions { display: flex; gap: 8px; }
+  .btn-buy { background: var(--accent); color: #fff; border: none; font-family: 'Bebas Neue', sans-serif; font-size: 0.95rem; letter-spacing: 0.1em; padding: 8px 18px; cursor: pointer; text-decoration: none; display: inline-block; transition: opacity 0.2s; }
+  .btn-buy:hover { opacity: 0.85; }
+  .btn-buy.inactive { background: var(--border); color: var(--muted); pointer-events: none; }
+  .btn-small { background: transparent; border: 1px solid var(--border); color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.75rem; padding: 8px 12px; cursor: pointer; transition: all 0.2s; }
+  .btn-small:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-small.remove:hover { border-color: var(--accent); color: var(--accent); }
+  .price-history { display: flex; gap: 3px; align-items: flex-end; height: 30px; margin-top: 4px; }
+  .price-bar { width: 6px; background: var(--border); border-radius: 1px; min-height: 4px; }
+  .price-bar.current { background: var(--accent); }
+  .price-bar.low { background: var(--green); }
+  .alert-log { margin-top: 32px; background: var(--surface); border: 1px solid var(--border); max-height: 220px; overflow-y: auto; }
+  .alert-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--surface); }
+  .alert-entry { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; font-size: 0.75rem; }
+  .alert-entry:last-child { border-bottom: none; }
+  .alert-time { color: var(--muted); min-width: 60px; font-size: 0.65rem; }
+  .alert-text .price { color: var(--accent); font-weight: 700; }
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: 0.85rem; line-height: 2; }
+  .toggle-row { display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: var(--muted); }
+  .toggle { position: relative; width: 36px; height: 20px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); transition: .3s; border-radius: 20px; }
+  .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background: var(--muted); transition: .3s; border-radius: 50%; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(16px); background: #fff; }
+  @media (max-width: 700px) {
+    .stats-bar { grid-template-columns: repeat(3, 1fr); }
+    .deal-card { grid-template-columns: auto 1fr; }
+    .deal-right { grid-column: 1/-1; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Deal<span>Shunter</span></div>
+  <div class="status-bar">
+    <div class="dot" id="monitorDot"></div>
+    <span id="statusText">Bereit</span>
+  </div>
+</header>
+
+<div class="main">
+  <!-- API Key Box -->
+  <div class="api-setup" id="apiSetupBox">
+    <div class="form-group" style="flex:2;min-width:220px;">
+      <label class="yellow">🔑 Keepa API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="Keepa API Key eingeben...">
+    </div>
+    <button class="btn" onclick="saveApiKey()">Speichern</button>
+    <button class="btn grey" onclick="testApiKey()">Verbindung testen</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-card"><div class="stat-value" id="statWatching">0</div><div class="stat-label">Beobachtet</div></div>
+    <div class="stat-card"><div class="stat-value" id="statErrors" style="color:var(--accent)">0</div><div class="stat-label">Preisfehler</div></div>
+    <div class="stat-card"><div class="stat-value" id="statDeals" style="color:var(--green)">0</div><div class="stat-label">Deals</div></div>
+    <div class="stat-card"><div class="stat-value" id="statChecks">0</div><div class="stat-label">API Checks</div></div>
+    <div class="stat-card"><div class="stat-value" id="statTokens" style="color:var(--yellow)">–</div><div class="stat-label">Tokens übrig</div></div>
+  </div>
+
+  <!-- Add Product -->
+  <div class="section-title">
+    Produkt hinzufügen
+    <div class="toggle-row">
+      <span>Auto-Refresh (5 Min)</span>
+      <label class="toggle"><input type="checkbox" id="autoToggle" onchange="toggleAuto()"><span class="slider"></span></label>
+    </div>
+  </div>
+  <div class="add-form">
+    <div class="form-group" style="flex:2;min-width:180px;">
+      <label>Produktname (optional)</label>
+      <input type="text" id="inputName" placeholder="Wird automatisch von Keepa geladen">
+    </div>
+    <div class="form-group" style="min-width:150px;">
+      <label>Amazon ASIN *</label>
+      <input type="text" id="inputAsin" placeholder="z.B. B09G3HRMVB" maxlength="12">
+    </div>
+    <div class="form-group" style="min-width:130px;">
+      <label>Alarm unter (€) *</label>
+      <input type="number" id="inputThreshold" placeholder="80.00" step="0.01" min="0">
+    </div>
+    <button class="btn" id="addBtn" onclick="addProduct()">+ Laden & Überwachen</button>
+  </div>
+
+  <!-- Products -->
+  <div class="section-title">Überwachte Produkte</div>
+  <div class="deals-grid" id="dealsGrid">
+    <div class="empty-state">Noch keine Produkte.<br>Füge eine ASIN hinzu — Preise werden direkt von Amazon.de geladen! 🔍</div>
+  </div>
+
+  <!-- Alert Log -->
+  <div class="alert-log">
+    <div class="alert-header">
+      <span>⚡ Alarm-Log</span>
+      <button class="btn-small" onclick="clearLog()" style="padding:4px 10px;font-size:0.65rem;">Leeren</button>
+    </div>
+    <div id="alertLog"><div class="empty-state" style="padding:24px;">Noch keine Alarme.</div></div>
+  </div>
+</div>
+
+<script>
+const KEEPA_API = 'https://api.keepa.com/product';
+const DOMAIN = 3; // Amazon.de
+const ICONS = ['📦','🎧','📺','💻','🎮','📱','⌚','🖥️','🎵','🌀','📷','🔊','🏠','👟','🧴'];
+
+let products = JSON.parse(localStorage.getItem('ds_products') || '[]');
+let alerts = JSON.parse(localStorage.getItem('ds_alerts') || '[]');
+let apiKey = localStorage.getItem('ds_apikey') || '51jnu8kblc2irfuhcglobf6dmgctj6ptbeiullplfusui06ke2gvlpmi84vpqvc6';
+let checks = parseInt(localStorage.getItem('ds_checks') || '0');
+let autoInterval = null;
+
+function init() {
+  if (apiKey) {
+    document.getElementById('apiKeyInput').value = apiKey;
+    document.getElementById('apiSetupBox').style.borderColor = 'var(--green)';
+  }
+  render(); renderAlerts(); updateStats();
+  if (Notification.permission === 'default') Notification.requestPermission();
+}
+
+function saveApiKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) return alert('Bitte API Key eingeben!');
+  apiKey = k;
+  localStorage.setItem('ds_apikey', k);
+  document.getElementById('apiSetupBox').style.borderColor = 'var(--green)';
+  setStatus('API Key gespeichert ✓', 'green');
+}
+
+async function testApiKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) return alert('API Key eingeben!');
+  setStatus('Teste Verbindung...', 'yellow');
+  try {
+    const r = await fetch(`${KEEPA_API}?key=${k}&domain=${DOMAIN}&asin=B09G3HRMVB&stats=1&history=0`);
+    const d = await r.json();
+    if (d.tokensLeft !== undefined) {
+      document.getElementById('statTokens').textContent = d.tokensLeft.toLocaleString();
+      setStatus(`✓ Verbunden — ${d.tokensLeft.toLocaleString()} Tokens verfügbar`, 'green');
+      apiKey = k; localStorage.setItem('ds_apikey', k);
+      document.getElementById('apiSetupBox').style.borderColor = 'var(--green)';
+    } else { setStatus('✗ Ungültiger API Key', 'red'); }
+  } catch(e) { setStatus('✗ Verbindungsfehler', 'red'); }
+}
+
+async function fetchPrice(asin) {
+  const r = await fetch(`${KEEPA_API}?key=${apiKey}&domain=${DOMAIN}&asin=${asin}&stats=90&history=1`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  if (d.tokensLeft !== undefined) document.getElementById('statTokens').textContent = d.tokensLeft.toLocaleString();
+  if (!d.products || !d.products.length) throw new Error('Produkt nicht gefunden');
+  const p = d.products[0];
+  let current = null, buybox = null, min90 = null, max90 = null;
+  if (p.stats && p.stats.current) {
+    const c = p.stats.current;
+    buybox = c[15] > 0 ? c[15] / 100 : null;
+    const newPrice = c[1] > 0 ? c[1] / 100 : null;
+    const amazonPrice = c[0] > 0 ? c[0] / 100 : null;
+    current = buybox || newPrice || amazonPrice;
+  }
+  if (p.stats) {
+    if (p.stats.min && p.stats.min[1] > 0) min90 = p.stats.min[1] / 100;
+    if (p.stats.max && p.stats.max[1] > 0) max90 = p.stats.max[1] / 100;
+  }
+  let history = [];
+  if (p.csv && p.csv[1]) {
+    const raw = p.csv[1];
+    for (let i = 1; i < raw.length; i += 2) if (raw[i] > 0) history.push(raw[i] / 100);
+    history = history.slice(-20);
+  }
+  return { title: p.title || '', current, buybox, min90, max90, history };
+}
+
+async function addProduct() {
+  if (!apiKey) return alert('Bitte zuerst Keepa API Key speichern!');
+  const asin = document.getElementById('inputAsin').value.trim().toUpperCase();
+  const threshold = parseFloat(document.getElementById('inputThreshold').value);
+  const name = document.getElementById('inputName').value.trim();
+  if (!asin || isNaN(threshold)) return alert('ASIN und Alarmpreis sind Pflicht!');
+  if (products.find(p => p.asin === asin)) return alert('ASIN wird bereits überwacht!');
+  const btn = document.getElementById('addBtn');
+  btn.disabled = true; btn.textContent = 'Lade...';
+  setStatus(`Lade Preis für ${asin}...`, 'yellow');
+  try {
+    const info = await fetchPrice(asin);
+    checks++; localStorage.setItem('ds_checks', checks);
+    const prod = {
+      id: Date.now(), asin,
+      name: name || info.title || asin,
+      threshold, current: info.current, buybox: info.buybox,
+      min90: info.min90, max90: info.max90, history: info.history,
+      icon: ICONS[Math.floor(Math.random() * ICONS.length)],
+      updated: new Date().toLocaleTimeString('de-DE'),
+      status: 'normal'
+    };
+    prod.status = calcStatus(prod);
+    if (prod.status === 'error') triggerAlert(prod);
+    products.push(prod); save(); render(); updateStats();
+    setStatus(`✓ ${asin} geladen — ${info.current ? info.current.toFixed(2) + ' €' : 'Preis n/v'}`, 'green');
+    document.getElementById('inputName').value = '';
+    document.getElementById('inputAsin').value = '';
+    document.getElementById('inputThreshold').value = '';
+  } catch(e) {
+    setStatus(`✗ ${e.message}`, 'red');
+    alert(`Fehler: ${e.message}`);
+  }
+  btn.disabled = false; btn.textContent = '+ Laden & Überwachen';
+}
+
+async function refreshProduct(id) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  p.status = 'loading'; render();
+  setStatus(`Aktualisiere ${p.asin}...`, 'yellow');
+  try {
+    const info = await fetchPrice(p.asin);
+    checks++; localStorage.setItem('ds_checks', checks);
+    const oldStatus = p.status;
+    p.current = info.current; p.buybox = info.buybox;
+    p.min90 = info.min90; p.max90 = info.max90; p.history = info.history;
+    p.updated = new Date().toLocaleTimeString('de-DE');
+    if (p.name === p.asin && info.title) p.name = info.title;
+    p.status = calcStatus(p);
+    if (p.status === 'error' && oldStatus !== 'error') triggerAlert(p);
+    save(); render(); updateStats();
+    setStatus(`✓ ${p.asin}: ${info.current ? info.current.toFixed(2) + ' €' : 'n/v'}`, 'green');
+  } catch(e) {
+    p.status = 'normal'; render();
+    setStatus(`✗ Fehler ${p.asin}: ${e.message}`, 'red');
+  }
+}
+
+async function refreshAll() {
+  for (const p of products) {
+    await refreshProduct(p.id);
+    await new Promise(r => setTimeout(r, 600));
+  }
+}
+
+function toggleAuto() {
+  const on = document.getElementById('autoToggle').checked;
+  clearInterval(autoInterval);
+  if (on) { autoInterval = setInterval(refreshAll, 5 * 60 * 1000); setStatus('Auto-Refresh aktiv (5 Min)', 'green'); }
+  else setStatus('Auto-Refresh aus', 'yellow');
+}
+
+function calcStatus(p) {
+  if (p.current === null) return 'oos';
+  if (p.current <= p.threshold) return 'error';
+  if (p.min90 && p.current <= p.min90 * 1.05) return 'deal';
+  if (p.max90 && p.current < p.max90 * 0.7) return 'deal';
+  return 'normal';
+}
+
+function triggerAlert(p) {
+  alerts.unshift({ time: new Date().toLocaleTimeString('de-DE'), name: p.name, asin: p.asin, price: p.current, threshold: p.threshold });
+  renderAlerts();
+  if (Notification.permission === 'granted') new Notification('⚡ Preisfehler!', { body: `${p.name}\n${p.current.toFixed(2)} € (Alarm < ${p.threshold.toFixed(2)} €)` });
+}
+
+function removeProduct(id) { products = products.filter(p => p.id !== id); save(); render(); updateStats(); }
+function clearLog() { alerts = []; save(); renderAlerts(); }
+function save() { localStorage.setItem('ds_products', JSON.stringify(products)); localStorage.setItem('ds_alerts', JSON.stringify(alerts.slice(-100))); }
+function setStatus(t, c) {
+  document.getElementById('statusText').textContent = t;
+  document.getElementById('monitorDot').className = 'dot' + (c === 'red' ? ' red' : c === 'yellow' ? ' yellow' : '');
+}
+function updateStats() {
+  document.getElementById('statWatching').textContent = products.length;
+  document.getElementById('statErrors').textContent = products.filter(p => p.status === 'error').length;
+  document.getElementById('statDeals').textContent = products.filter(p => p.status === 'deal').length;
+  document.getElementById('statChecks').textContent = checks;
+}
+
+function render() {
+  updateStats();
+  const grid = document.getElementById('dealsGrid');
+  if (!products.length) { grid.innerHTML = '<div class="empty-state">Noch keine Produkte.<br>Füge eine ASIN hinzu! 🔍</div>'; return; }
+  grid.innerHTML = products.map(p => {
+    const isError = p.status === 'error', isDeal = p.status === 'deal', isOos = p.status === 'oos', isLoading = p.status === 'loading';
+    const priceColor = isError ? 'var(--accent)' : isDeal ? 'var(--green)' : 'var(--text)';
+    const badge = isLoading ? '<span class="badge loading">Lade...</span>'
+      : isOos ? '<span class="badge oos">Nicht verfügbar</span>'
+      : isError ? `<span class="badge error">⚡ PREISFEHLER!</span>`
+      : isDeal ? '<span class="badge deal">🔥 DEAL – 90d-Tief</span>'
+      : '<span class="badge normal">Normal</span>';
+    let hist = '';
+    if (p.history && p.history.length > 1) {
+      const mx = Math.max(...p.history), mn = Math.min(...p.history), rng = mx - mn || 1;
+      hist = '<div class="price-history">' + p.history.slice(-15).map((v, i, a) => {
+        const h = Math.max(4, Math.round(((v - mn) / rng) * 26) + 4);
+        return `<div class="price-bar ${i === a.length-1 ? 'current' : v === mn ? 'low' : ''}" style="height:${h}px" title="${v.toFixed(2)} €"></div>`;
+      }).join('') + '</div>';
+    }
+    return `<div class="deal-card ${p.status === 'error' ? 'error' : p.status === 'deal' ? 'deal' : ''} ${isLoading ? 'loading' : ''}">
+      <div class="deal-icon">${p.icon}</div>
+      <div>
+        <div class="deal-name">${p.name.length > 65 ? p.name.slice(0,65) + '...' : p.name}</div>
+        <div class="deal-asin">ASIN: ${p.asin} · Zuletzt: ${p.updated || '–'}</div>
+        <div class="deal-meta">
+          <span class="deal-tag">Alarm: &lt; ${p.threshold.toFixed(2)} €</span>
+          ${p.min90 ? `<span class="deal-tag">90d-Tief: ${p.min90.toFixed(2)} €</span>` : ''}
+          ${p.max90 ? `<span class="deal-tag">90d-Hoch: ${p.max90.toFixed(2)} €</span>` : ''}
+          ${p.buybox ? `<span class="deal-tag live">Buy Box: ${p.buybox.toFixed(2)} €</span>` : ''}
+        </div>
+        ${hist}
+      </div>
+      <div class="deal-right">
+        <div class="price-current" style="color:${priceColor}">${p.current !== null ? p.current.toFixed(2) + ' €' : isLoading ? '...' : 'n/v'}</div>
+        ${badge}
+        <div class="deal-actions">
+          <a class="btn-buy ${isOos || isLoading ? 'inactive' : ''}" href="https://www.amazon.de/dp/${p.asin}" target="_blank">🛒 Kaufen</a>
+          <button class="btn-small" onclick="refreshProduct(${p.id})" title="Jetzt aktualisieren">↻</button>
+          <button class="btn-small remove" onclick="removeProduct(${p.id})">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAlerts() {
+  const log = document.getElementById('alertLog');
+  if (!alerts.length) { log.innerHTML = '<div class="empty-state" style="padding:24px;">Noch keine Alarme.</div>'; return; }
+  log.innerHTML = alerts.slice(0,50).map(a => `<div class="alert-entry">
+    <span class="alert-time">${a.time}</span>
+    <span class="alert-text">${a.name} — <span class="price">${a.price.toFixed(2)} €</span> <span style="color:var(--muted)">(Alarm: ${a.threshold.toFixed(2)} €)</span></span>
+    <a href="https://www.amazon.de/dp/${a.asin}" target="_blank" style="color:var(--accent);font-size:0.7rem;text-decoration:none;">→ Kaufen</a>
+  </div>`).join('');
+}
+
+init();
+</script>
+</body>
+</html>
